@@ -9,7 +9,7 @@ import "net/http"
 import (
 	"sync"
 	"time"
-	"fmt"
+	// "fmt"
 )
 
 type TaskState string
@@ -60,13 +60,13 @@ func (c *Coordinator) RequestTask (args *RequestTaskArgs, reply *RequestTaskRepl
 				c.mapTasks[i].State = InProgress
 				c.mapTasks[i].StartTime = time.Now()
 
-				// LOGGING
-				fmt.Println("assign map", i)
+				// LOGGING FOR DEBUG
+				// fmt.Println("assign map", i)
 				return nil  // mutex is release because we use "defer" syntax
 			}
 		}
-		// LOGGING
-		fmt.Println("map wait")
+		// LOGGING FOR DEBUG
+		// fmt.Println("map wait")
 
 		// no idle map task but we have NOT complete all map task, so we cannot let this worker get any job (no reduce job before all map job done)
 		reply.TaskType = WaitTask
@@ -87,8 +87,8 @@ func (c *Coordinator) RequestTask (args *RequestTaskArgs, reply *RequestTaskRepl
 			c.reduceTasks[i].State = InProgress
 			c.reduceTasks[i].StartTime = time.Now()
 
-			// LOGGING
-			fmt.Println("reduce")
+			// LOGGING FOR DEBUG
+			// fmt.Println("reduce")
 			return nil 
 		}
 	}
@@ -102,17 +102,26 @@ func (c *Coordinator) RequestTask (args *RequestTaskArgs, reply *RequestTaskRepl
 	return nil
 }
 
-func (c *Coordinator) ReportTask (args *ReportTaskCompleteArgs, reply *ReportTaskCompleteReply) error {
+func (c *Coordinator) ReportTaskDone (args *ReportTaskCompleteArgs, reply *ReportTaskCompleteReply) error {
 	// concurrency lock
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	// when this function is called, task type can only be map or reduce
 	if args.TaskType == MapTask {
-		c.mapTasks[args.TaskID].State = Completed
+		// after we introducing timeout mechanism, we may have two workers running the same tasks
+		// we only need to mark one of them as complete and no need to receive the duplicated completeness from the later one
+		// so we only accept report done when the task status is originally "in progress" (meaning it is running)
+		// if the task is completed already, no need to double accept.
+		// be cautious: no need to distingush which worker runs that task as both of them shall return identical results (map reduce is deterministic)
+		if c.mapTasks[args.TaskID].State == InProgress{
+			c.mapTasks[args.TaskID].State = Completed
+		}
 		c.allMapTaskComplete = c.CheckAllMapTaskComplete()
 	} else {
-		c.reduceTasks[args.TaskID].State = Completed
+		if c.reduceTasks[args.TaskID].State == InProgress{
+			c.reduceTasks[args.TaskID].State = Completed
+		}
 		c.allReduceTaskComplete = c.CheckAllReduceTaskComplete()
 	}
 	return nil
@@ -134,6 +143,38 @@ func (c *Coordinator) CheckAllReduceTaskComplete() bool {
 		}
 	}
 	return true
+}
+
+func (c *Coordinator) checkTimeOut() {
+	// coordinate keeps checking whether the assigned task is time out
+	// task in other status does not require check
+	for {
+		// concurrency mutex
+		c.mu.Lock()
+
+		nowTime := time.Now() 
+		for i, _ := range c.mapTasks {
+			// when the task has been running >= 10 second; makr it as "Idle" so that RequestTask can re-assign the job
+			if c.mapTasks[i].State == InProgress && nowTime.Sub(c.mapTasks[i].StartTime) > 10 * time.Second {
+				c.mapTasks[i].State = Idle
+				c.mapTasks[i].StartTime = time.Time{}
+			}
+		}
+
+		for i, _ := range c.reduceTasks {
+			// similar logic
+			if c.reduceTasks[i].State == InProgress && time.Since(c.reduceTasks[i].StartTime) > 10 * time.Second {
+				c.reduceTasks[i].State = Idle
+				c.reduceTasks[i].StartTime = time.Time{}
+			}
+		}
+
+		// release the mutex
+		c.mu.Unlock()
+
+		// add interval for this background check
+		time.Sleep(time.Second)
+	}
 }
 
 // an example RPC handler.
@@ -161,17 +202,18 @@ func (c *Coordinator) server(sockname string) {
 // if the entire job has finished.
 func (c *Coordinator) Done() bool {
 	// ret := false
-	fmt.Println(
-        "Done called",
-        c.allMapTaskComplete,
-        c.allReduceTaskComplete,
-    )
+	// LOGGING FOR DEBUG
+	// fmt.Println(
+    //     "Done called",
+    //     c.allMapTaskComplete,
+    //     c.allReduceTaskComplete,
+    // )
 
 	// Your code here.
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	return c.allMapTaskComplete && c.allReduceTaskComplete
+	return c.allReduceTaskComplete
 }
 
 // create a Coordinator.
@@ -203,6 +245,9 @@ func MakeCoordinator(sockname string, files []string, nReduce int) *Coordinator 
 	c.nReduce = nReduce
 	c.allMapTaskComplete = false
 	c.allReduceTaskComplete = false
+
+	// start background goroutine to introduce worker timeout mechanism
+	go c.checkTimeOut()
 
 	c.server(sockname)
 	return &c

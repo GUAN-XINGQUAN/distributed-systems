@@ -50,8 +50,8 @@ func Worker(sockname string, mapf func(string, string) []KeyValue,
 		// ask for a task
 		reply := requestTask()
 
-		// LOGGING
-		fmt.Printf("worker got task: %+v\n", reply)
+		// LOGGING FOR DEBUG
+		// fmt.Printf("worker got task: %+v\n", reply)
 
 		switch reply.TaskType {
 		case MapTask:
@@ -99,9 +99,9 @@ func doMap(reply RequestTaskReply, mapf func(string, string) []KeyValue) {
 		filename := fmt.Sprintf("mr-%d-%d", reply.TaskID, y)
 		// optimize for atomic writing: write to temp file then rename operation which is atomic
 		tempFile, _ := os.CreateTemp(".", "mr-tmp-")
-		encode := json.NewEncoder(tempFile)
+		enc := json.NewEncoder(tempFile)
 		for _, kv := range buckets[y] {
-			encode.Encode(&kv)
+			enc.Encode(&kv)
 		}
 		tempFile.Close()
 		os.Rename(tempFile.Name(), filename)  // atomic!!! avoid crashing during writing
@@ -124,10 +124,10 @@ func doReduce(reply RequestTaskReply, reducef func(string, []string) string) {
 			continue
 		}
 
-		decoder := json.NewDecoder(file)
+		dec := json.NewDecoder(file)
 		for {
 			var kv KeyValue  // just declare as i will keep using this again and again
-			err := decoder.Decode(&kv)
+			err := dec.Decode(&kv)
 			if err != nil {
 				break
 			}
@@ -184,7 +184,7 @@ func reportDone(taskType string, taskID int) {
 	args.TaskType = taskType
 	args.TaskID = taskID
 	reply := ReportTaskCompleteReply{}
-	call("Coordinator.ReportTask", &args, &reply)
+	call("Coordinator.ReportTaskDone", &args, &reply)
 	return
 } 
 
