@@ -23,10 +23,10 @@ type ExampleReply struct {
 
 // helper variable for ENUM task type
 const (
-	MapTask = "Map"
-	ReduceTask = "Reduce"
-    WaitTask = "Wait"
-    ExitTask = "Exit"
+	MapTask = "map"
+	ReduceTask = "reduce"
+    WaitTask = "wait"
+    ExitTask = "exit"
 )
 
 // Worker asks the coordinator for job: "give me a task"
