@@ -50,6 +50,9 @@ func Worker(sockname string, mapf func(string, string) []KeyValue,
 		// ask for a task
 		reply := requestTask()
 
+		// LOGGING
+		fmt.Printf("worker got task: %+v\n", reply)
+
 		switch reply.TaskType {
 		case MapTask:
 			doMap(reply, mapf)
@@ -95,7 +98,7 @@ func doMap(reply RequestTaskReply, mapf func(string, string) []KeyValue) {
 	for y := 0; y < reply.NReduce; y++ {
 		filename := fmt.Sprintf("mr-%d-%d", reply.TaskID, y)
 		// optimize for atomic writing: write to temp file then rename operation which is atomic
-		tempFile, _ := os.CreateTemp("", "mr-tmp-")
+		tempFile, _ := os.CreateTemp(".", "mr-tmp-")
 		encode := json.NewEncoder(tempFile)
 		for _, kv := range buckets[y] {
 			encode.Encode(&kv)
@@ -142,7 +145,7 @@ func doReduce(reply RequestTaskReply, reducef func(string, []string) string) {
 	// step - 3: group by key and call reducef
 	// using temp file again to avoid crash in the middle of writing
 	// even crash happens, this is temp file, so won't affect final outcome as coordinator will re-assign the job if it does not receive report done
-	ofile, _ := os.CreateTemp("", "mr-out-tmp-")
+	ofile, _ := os.CreateTemp(".", "mr-out-tmp-")
 
 	// copy from the single process reduce function
 	i := 0

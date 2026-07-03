@@ -9,6 +9,7 @@ import "net/http"
 import (
 	"sync"
 	"time"
+	"fmt"
 )
 
 type TaskState string
@@ -58,9 +59,15 @@ func (c *Coordinator) RequestTask (args *RequestTaskArgs, reply *RequestTaskRepl
 				// update the task status at coordinator memory
 				c.mapTasks[i].State = InProgress
 				c.mapTasks[i].StartTime = time.Now()
+
+				// LOGGING
+				fmt.Println("assign map", i)
 				return nil  // mutex is release because we use "defer" syntax
 			}
 		}
+		// LOGGING
+		fmt.Println("map wait")
+
 		// no idle map task but we have NOT complete all map task, so we cannot let this worker get any job (no reduce job before all map job done)
 		reply.TaskType = WaitTask
 		return nil
@@ -79,6 +86,9 @@ func (c *Coordinator) RequestTask (args *RequestTaskArgs, reply *RequestTaskRepl
 			// update the task tracking at coordinator side
 			c.reduceTasks[i].State = InProgress
 			c.reduceTasks[i].StartTime = time.Now()
+
+			// LOGGING
+			fmt.Println("reduce")
 			return nil 
 		}
 	}
@@ -151,6 +161,11 @@ func (c *Coordinator) server(sockname string) {
 // if the entire job has finished.
 func (c *Coordinator) Done() bool {
 	// ret := false
+	fmt.Println(
+        "Done called",
+        c.allMapTaskComplete,
+        c.allReduceTaskComplete,
+    )
 
 	// Your code here.
 	c.mu.Lock()
