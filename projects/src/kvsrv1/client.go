@@ -34,14 +34,19 @@ func (ck *Clerk) Get(key string) (string, rpc.Tversion, rpc.Err) {
 	args := rpc.GetArgs{
 		Key: key,
 	}
-	reply := rpc.GetReply{
-	}
-	ok := ck.server.Call("KVServer.Get", &args, &reply)
+	for {
+		reply := rpc.GetReply{}
 
-	if ok {
-		return reply.Value, "", ""
-	} 
-	return "", "", ""
+		ok := ck.clnt.Call(ck.server, "KVServer.Get", &args, &reply)
+		if ok {
+			if reply.Err == rpc.OK {
+				return reply.Value, reply.Version, reply.Err
+			}
+			if reply.Err == rpc.ErrNoKey {
+				return "", 0, reply.Err
+			}
+		}
+	}
 }
 
 // Put updates key with value only if the version in the
@@ -61,7 +66,34 @@ func (ck *Clerk) Get(key string) (string, rpc.Tversion, rpc.Err) {
 // The types of args and reply (including whether they are pointers)
 // must match the declared types of the RPC handler function's
 // arguments. Additionally, reply must be passed as a pointer.
-func (ck *Clerk) Put(key, value string, version rpc.Tversion) rpc.Err {
+func (ck *Clerk) Put(key string, value string, version rpc.Tversion) rpc.Err {
 	// You will have to modify this function.
-	return rpc.ErrNoKey
+	args := rpc.PutArgs{
+		Key: key,
+		Value: value,
+		Version: version,
+	}
+
+	isFirstAttempt := true
+
+	for {
+		reply := rpc.PutReply{}
+		ok := ck.clnt.Call(ck.server, "KVServer.Put", &args, &reply)
+		if ok {
+			if reply.Err == rpc.OK {
+				return rpc.OK
+			}
+			if reply.Err == rpc.ErrNoKey {
+				return rpc.ErrNoKey
+			}
+			if reply.Err == rpc.ErrVersion && isFirstAttempt {
+				return rpc.ErrVersion
+			}
+			if reply.Err == rpc.ErrVersion && !isFirstAttempt {
+				return rpc.ErrMaybe
+			}
+		} else {
+			isFirstAttempt = false
+		}
+	}
 }
