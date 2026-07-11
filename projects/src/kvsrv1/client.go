@@ -1,6 +1,7 @@
 package kvsrv
 
 import (
+	"time"
 	"6.5840/kvsrv1/rpc"
 	"6.5840/kvtest1"
 	"6.5840/tester1"
@@ -45,6 +46,8 @@ func (ck *Clerk) Get(key string) (string, rpc.Tversion, rpc.Err) {
 			if reply.Err == rpc.ErrNoKey {
 				return "", 0, reply.Err
 			}
+		} else {
+			time.Sleep(100 * time.Millisecond)
 		}
 	}
 }
@@ -94,6 +97,7 @@ func (ck *Clerk) Put(key string, value string, version rpc.Tversion) rpc.Err {
 			}
 		} else {
 			isFirstAttempt = false
+			time.Sleep(100 * time.Millisecond)
 		}
 	}
 }
