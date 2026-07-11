@@ -2,6 +2,7 @@ package lock
 
 import (
 	"6.5840/kvtest1"
+	"6.5840/kvsrv1/rpc"
 )
 
 const (
@@ -18,7 +19,6 @@ type Lock struct {
 	ck kvtest.IKVClerk
 	// You may add code here
 	lockName string
-	lockState string
 }
 
 // The tester calls MakeLock() and passes in a k/v clerk; your code can
@@ -30,7 +30,7 @@ type Lock struct {
 func MakeLock(ck kvtest.IKVClerk, lockname string) *Lock {
 	lk := &Lock{ck: ck}
 	// You may add code here
-	lk.lockName = lockName
+	lk.lockName = lockname
 	return lk
 }
 
@@ -38,22 +38,25 @@ func (lk *Lock) Acquire() {
 	// Your code here
 	for {
 		// get current state
-		value, version, err := ck.Get(lk.lockName)
+		value, version, _ := lk.ck.Get(lk.lockName)
 
 		// if locked, do nothing but to wait
 		if value == LOCK {
 			continue
-		} 
+		}
 		
-		// attempt conditional put
+		// all other cases: attempt to lock
+		putErr := lk.ck.Put(lk.lockName, LOCK, version)
 
 		// if success return
-
-		// other retry
-
+		if putErr == rpc.OK {
+			return
+		}
 	}
 }
 
 func (lk *Lock) Release() {
 	// Your code here
+	_, version, _ := lk.ck.Get(lk.lockName)
+	lk.ck.Put(lk.lockName, UNBLOCK, version)
 }
